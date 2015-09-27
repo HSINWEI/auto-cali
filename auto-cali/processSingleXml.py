@@ -1,7 +1,7 @@
 import xml.etree.ElementTree as ET
-import specs
+import specs_w
 from numpy import argmax
-# import time
+from time import asctime, localtime
 # from scipy.interpolate import interp1d
 import sys
 
@@ -12,13 +12,15 @@ Au4f_name = "Au4f"
 
 def processSingleXml(filename, verbose=None):
     try:
-        print "Process " + filename
+        print "\nProcessing " + filename
         sys.stdout.flush()
-        specs_obj = specs.SPECS(filename, verbose)
-    except:
-        print "        Cannot open " + filename
+        specs_obj = specs_w.SPECS_W(filename, verbose)
+    except IOError as e:
+        print '        ' + str(e)
         return
 
+    if specs_obj == None:
+        return
     # get Au4f (time, peak energy)
     Au4fPeaks = []
     for group in  specs_obj.groups:
@@ -26,19 +28,10 @@ def processSingleXml(filename, verbose=None):
             if region.name[:len(Au4f_name)] == Au4f_name:
                 peak_index = argmax(region.counts)
                 peak_energy = region.kinetic_axis[peak_index]
-    #             print region.name + ' peak energy ' + str(peak_energy)
-    #             f1 = interp1d(region.kinetic_axis,region.counts,kind='slinear')
-    #             ke_upper = region.kinetic_energy + (region.values_per_curve -
-    #                                           1) * region.scan_delta
-    #             kinetic_axis_new = numpy.linspace(region.kinetic_energy, ke_upper, num=region.values_per_curve*10)
-    # 
-    #             peak_index = numpy.argmax(f1(kinetic_axis_new))
-    #             peak_energy = kinetic_axis_new[peak_index]
-    #             print region.name + ' peak energy interp nearest ' + str(peak_energy)
-    # 
-    #             mytime = time.asctime(time.localtime(region.time))
-    #             print mytime
-                Au4fPeak = {'time':region.time, 'energy':peak_energy}
+                region.excitation_energy = peak_energy + Au4f_binding_energy 
+                if verbose:
+                    print "{:24s} {} Epeak {:.2f} => Eexc {:.2f}".format("Found "+region.name, asctime(localtime(region.time)), peak_energy, region.excitation_energy)
+                Au4fPeak = {'time':region.time, 'peak':peak_energy, 'eexc':region.excitation_energy}
                 Au4fPeaks.append(Au4fPeak)
    
     # find sample data region and calibrate it's energy 
@@ -46,34 +39,36 @@ def processSingleXml(filename, verbose=None):
         for region in group.regions:
             if region.name[:len(Au4f_name)] == Au4f_name:
                 # this is Au4f data region
-                if verbose: print "\t" + region.name
-            else: 
+                if verbose: 
+                    print "{:24s} {}\tEexc {}".format(region.name, asctime(localtime(region.time)), region.excitation_energy)
+            else:
                 # this is sample data region
-                if verbose: print "\t" + region.name
                 # find prior Au4f and posterior Au4f
                 for i in range(len(Au4fPeaks)):
-                    if region.time < Au4fPeaks[i]['time'] and region.time > Au4fPeaks[i-1]['time']:
-                        t1 = Au4fPeaks[i-1]['time']
+                    if region.time < Au4fPeaks[i]['time'] and region.time > Au4fPeaks[i - 1]['time']:
+                        t1 = Au4fPeaks[i - 1]['time']
                         t2 = Au4fPeaks[i]['time']
-                        e1 = Au4fPeaks[i-1]['energy']
-                        e2 = Au4fPeaks[i]['energy']
+                        e1 = Au4fPeaks[i - 1]['eexc']
+                        e2 = Au4fPeaks[i]['eexc']
                         tt = region.time 
-                        ee = e1 + (e2-e1)/(t2-t1)*(tt-t1)
-                        calibrated_ex = ee + Au4f_binding_energy
-                        binding_energy = calibrated_ex - region.kinetic_energy 
+                        calibrated_eexc = e1 + (e2 - e1) / (t2 - t1) * (tt - t1)
+                        # region.kinetic_energy is Energy Start
+                        binding_energy_start = calibrated_eexc - region.kinetic_energy
                         if verbose: 
-                            print "\t\t" + "excitation_energy original   " + str(region.excitation_energy)
-                            print "\t\t" + "excitation_energy calibrated " + '{:.2f}'.format(calibrated_ex)
-                            print "\t\t" + "binding energy               " + '{:.2f}'.format(calibrated_ex)
+                            print "{:24s} {}\tEexc {:.2f}\tEstart {:.2f}\tEorg {:.2f}".format(region.name, asctime(localtime(region.time)), calibrated_eexc, binding_energy_start, region.excitation_energy)
                         
                         # denote energy is patched
                         region.setXmlRegionDataName(region.name + " calibrated binding energy")
-                        # fill calibrated excitation energy
-                        region.setXmlExcitationEnergy('{:.2f}'.format(calibrated_ex))
-                        # fill kinetic energy filed with binding energy
-                        region.setXmlKineticEnergy('{:.2f}'.format(binding_energy))
+                        # fill calibrated excitation_energy energy
+                        region.setXmlExcitationEnergy('{:.2f}'.format(calibrated_eexc))
+                        # fill kinetic energy filed with binding energy start
+                        region.setXmlKineticEnergy('{:.2f}'.format(binding_energy_start))
+                        region.isClibrated = True
                         break
-
+                if not region.isClibrated and verbose:
+                    print "{:24s} Cannot find matched {} pair to calibrate {}".format(region.name, Au4f_name, region.name)
+                        
+                    
     # save as a new xml file
     newfilename = specs_obj.writeCalibratedXml()
     del specs_obj
