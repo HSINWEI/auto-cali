@@ -49,13 +49,14 @@
 ################################################################################
 
 from __future__ import division
-import xml.etree.ElementTree        # required by py2exe
-import xml.etree.cElementTree as ET
+# import xml.etree.ElementTree        # required by py2exe
+import xml.etree.ElementTree as ET
 from StringIO import StringIO
 from numpy import array, linspace, arange, zeros, ceil, amax, amin, argmax, argmin, abs
-from numpy import polyfit, polyval, seterr, trunc, mean
-from numpy.linalg import norm
-from scipy.interpolate import interp1d
+from numpy import seterr, trunc
+# from numpy.linalg import norm
+# from scipy.interpolate import interp1d
+import os
 
 DEBUG = False
 OPTION = 2
@@ -77,23 +78,28 @@ class SPECS(object):
 
     """
 
-    def __init__(self, filename):
+    def __init__(self, filename, verbose):
         """ Constructor, takes the xml file path. """
-        
+        if (verbose): 
+            global DEBUG
+            DEBUG = True
+
+        self.filename = filename
         tree = ET.ElementTree()
-        
+        self.tree = tree   
+
         try:
-          self.xmlroot = tree.parse(filename)
+            self.xmlroot = tree.parse(filename)
         except NameError:
-          print "SPECS init error: could not open this file as an xml tree."
-          return None
+            print "SPECS init error: could not open this file as an xml tree."
+            return None
         except ET.ParseError:
-          # We probably need to decode from Windows cp1252 string encoding.
-          f = open(filename, 'r')
-          contents = f.readlines()
-          f.close()
-          contents = "".join(contents).decode("cp1252").encode("utf-8")
-          self.xmlroot = tree.parse(StringIO(contents))
+            # We probably need to decode from Windows cp1252 string encoding.
+            f = open(filename, 'r')
+            contents = f.readlines()
+            f.close()
+            contents = "".join(contents).decode("cp1252").encode("utf-8")
+            self.xmlroot = tree.parse(StringIO(contents))
 
         # The version impacts on properties of the document so we need to read it
         # here.
@@ -107,15 +113,21 @@ class SPECS(object):
             # SPECS parlance) but we must check in case the file format changes.
             if group.get('type_name') == "RegionGroup":
                 self.groups.append(SPECSGroup(group))
-
+    
+    def writeCalibratedXml(self):
+        file_main, file_extension = os.path.splitext(self.filename)
+        newfilename = file_main+'-calibrated.xml'
+        self.tree.write(newfilename)
+        return newfilename
 
 class SPECSGroup(object):
     """ Encapsulates a "RegionGroup" struct from the SPECS XML format. """
 
     def __init__(self, xmlgroup):
 
+        self.xmlgroup = xmlgroup
         self.name = xmlgroup[0].text
-
+        
         if DEBUG:
             print "======================= ", self.name, " ========================"
 
@@ -130,8 +142,11 @@ class SPECSRegion(object):
 
     def __init__(self, xmlregion):
 
+        self.xmlregion = xmlregion
         self.name = xmlregion[0].text
         self.num_cycles = int(xmlregion[7].attrib['length'])
+        if DEBUG:
+            print "======================= ", self.name, " ========================"
 
         self.raw_counts = []
         self.scaling_factors = []
@@ -288,7 +303,7 @@ class SPECSRegion(object):
         for c in self.raw_counts:
             tmp_channels = []
             for i in range(num_detectors):
-                tmp_channels.append(c[i::9])
+                tmp_channels.append(c[i::num_detectors])
             # IMPORTANT: If FixedAnalyzerTransmission or FixedRetardingRatio, we need to use
             # the nearest-neighbour method to align the channeltron energies. I have only
             # implemented the method for FixedAnalyzerTransission at the moment - the FRR
@@ -339,168 +354,21 @@ class SPECSRegion(object):
         for elem in xmlregion[9].iter("struct"):
             if elem[0].text == "Comment":
                 self.comment = elem[1].text
+        # get time
+        time = xmlregion.find(".//ulong[@name='time']")
+        self.time = int(time.text)
 
-################################################################################
-#
-# FUNCTIONS
-#
-################################################################################
+    def setXmlExcitationEnergy(self, excitation_energy):
+        rdef = self.xmlregion.find(".//struct[@type_name='RegionDef']")
+        for elem in rdef:
+            if elem.attrib['name'] == "excitation_energy":
+                elem.text = excitation_energy
 
+    def setXmlKineticEnergy(self, kinetic_energy):
+        rdef = self.xmlregion.find(".//struct[@type_name='RegionDef']")
+        for elem in rdef:
+            if elem.attrib['name'] == "kinetic_energy":
+                elem.text = kinetic_energy
 
-def preedge_calculate(x, y):
-    """ P = specs.preedge_calculate(x,y)
-
-    Calculates the best-fit linear pre-edge for a dataset (x,y). Finds the biggest peak,
-    then finds the pre-edge region using a sequence of linear fits starting from the end
-    point.
-
-    """
-
-    # Make sure we've been passed arrays and not lists.
-    x = array(x)
-    y = array(y)
-
-    # Sanity check: Do we actually have data to process here?
-    if not (x.any() and y.any()):
-        print "specs.preedge_calculate: One of the arrays x or y is empty. Returning zero background."
-        return zeros(x.shape)
-
-    # Next ensure the energy values are *decreasing* in the array,
-    # if not, reverse them.
-    if x[0] < x[-1]:
-        is_reversed = True
-        x = x[::-1]
-        y = y[::-1]
-    else:
-        is_reversed = False
-
-    # Locate the biggest peak.
-    maxidx = abs(y - amax(y)).argmin()
-
-    # Find the gradient of every possible linear fit between the lowest binding energy
-    # and the biggest peak.
-    grads = []
-    for i in range(2, len(x) - maxidx):
-        # Best linear fit to the last i values
-        xs = x[-i:]
-        ys = y[-i:]
-        #p = polyfit(xs,ys,1)
-        #grads.append(p[0])
-        # Try a new algorithm that should be faster than polyfit
-        xs = xs - mean(xs)
-        ys = ys - mean(ys)
-        grads.append((xs * ys).sum() / (xs * xs).sum())
-
-    # Differentiate the gradient array.
-    dgrads = []
-    for i in range(len(grads) - 1):
-        dgrads.append(grads[i + 1] - grads[i])
-    dgrads = array(dgrads)
-
-    # We might not have actually accumulated anything if the maximum is near the
-    # edge (like in a survey scan - the SE background is very big). So, may have
-    # to return a zero background.
-    if not dgrads.any():
-        print "specs.preedge_calculate: No pre-edge gradients. The spectrum must be very large at the low kinetic energy end. Returning zero background."
-        return zeros(x.shape)
-
-    # Find the minimum index of the absolute of the gradient of gradients.
-    mingrad = abs(dgrads).argmin()
-
-    # Make a best linear fit from this number of pre-edge points, generate linear
-    # pre-edge.
-    p = polyfit(x[-mingrad:], y[-mingrad:], 1)
-
-    if is_reversed:
-        return polyval(p, x)[::-1]
-    else:
-        return polyval(p, x)
-
-
-def shirley_calculate(x, y, tol=1e-5, maxit=10):
-    """ S = specs.shirley_calculate(x,y, tol=1e-5, maxit=10)
-
-    Calculate the best auto-Shirley background S for a dataset (x,y). Finds the biggest peak
-    and then uses the minimum value either side of this peak as the terminal points of the
-    Shirley background.
-
-    The tolerance sets the convergence criterion, maxit sets the maximum number
-    of iterations.
-
-    """
-
-    # Make sure we've been passed arrays and not lists.
-    x = array(x)
-    y = array(y)
-
-    # Sanity check: Do we actually have data to process here?
-    if not (x.any() and y.any()):
-        print "specs.shirley_calculate: One of the arrays x or y is empty. Returning zero background."
-        return zeros(x.shape)
-
-    # Next ensure the energy values are *decreasing* in the array,
-    # if not, reverse them.
-    if x[0] < x[-1]:
-        is_reversed = True
-        x = x[::-1]
-        y = y[::-1]
-    else:
-        is_reversed = False
-
-    # Locate the biggest peak.
-    maxidx = abs(y - amax(y)).argmin()
-
-    # It's possible that maxidx will be 0 or -1. If that is the case,
-    # we can't use this algorithm, we return a zero background.
-    if maxidx == 0 or maxidx >= len(y) - 1:
-        print "specs.shirley_calculate: Boundaries too high for algorithm: returning a zero background."
-        return zeros(x.shape)
-
-    # Locate the minima either side of maxidx.
-    lmidx = abs(y[0:maxidx] - amin(y[0:maxidx])).argmin()
-    rmidx = abs(y[maxidx:] - amin(y[maxidx:])).argmin() + maxidx
-    xl = x[lmidx]
-    yl = y[lmidx]
-    xr = x[rmidx]
-    yr = y[rmidx]
-
-    # Max integration index
-    imax = rmidx - 1
-
-    # Initial value of the background shape B. The total background S = yr + B,
-    # and B is equal to (yl - yr) below lmidx and initially zero above.
-    B = zeros(x.shape)
-    B[:lmidx] = yl - yr
-    Bnew = B.copy()
-
-    it = 0
-    while it < maxit:
-        if DEBUG:
-            print "Shirley iteration: ", it
-        # Calculate new k = (yl - yr) / (int_(xl)^(xr) J(x') - yr - B(x') dx')
-        ksum = 0.0
-        for i in range(lmidx, imax):
-            ksum += (x[i] - x[i + 1]) * 0.5 * (y[i] + y[i + 1]
-                                               - 2 * yr - B[i] - B[i + 1])
-        k = (yl - yr) / ksum
-        # Calculate new B
-        for i in range(lmidx, rmidx):
-            ysum = 0.0
-            for j in range(i, imax):
-                ysum += (x[j] - x[j + 1]) * 0.5 * (y[j] +
-                                                   y[j + 1] - 2 * yr - B[j] - B[j + 1])
-            Bnew[i] = k * ysum
-        # If Bnew is close to B, exit.
-        if norm(Bnew - B) < tol:
-            B = Bnew.copy()
-            break
-        else:
-            B = Bnew.copy()
-        it += 1
-
-    if it >= maxit:
-        print "specs.shirley_calculate: Max iterations exceeded before convergence."
-    if is_reversed:
-        return (yr + B)[::-1]
-    else:
-        return yr + B
+    def setXmlRegionDataName(self,name):
+        self.xmlregion[0].text = name
