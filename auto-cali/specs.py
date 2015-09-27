@@ -1,4 +1,9 @@
 ################################################################################
+# removed unused code
+# 
+################################################################################
+
+################################################################################
 #
 # specs.py
 #
@@ -54,8 +59,6 @@ import xml.etree.cElementTree as ET
 from StringIO import StringIO
 from numpy import array, linspace, arange, zeros, ceil, amax, amin, argmax, argmin, abs
 from numpy import polyfit, polyval, seterr, trunc, mean
-from numpy.linalg import norm
-from scipy.interpolate import interp1d
 
 DEBUG = False
 OPTION = 2
@@ -340,167 +343,3 @@ class SPECSRegion(object):
             if elem[0].text == "Comment":
                 self.comment = elem[1].text
 
-################################################################################
-#
-# FUNCTIONS
-#
-################################################################################
-
-
-def preedge_calculate(x, y):
-    """ P = specs.preedge_calculate(x,y)
-
-    Calculates the best-fit linear pre-edge for a dataset (x,y). Finds the biggest peak,
-    then finds the pre-edge region using a sequence of linear fits starting from the end
-    point.
-
-    """
-
-    # Make sure we've been passed arrays and not lists.
-    x = array(x)
-    y = array(y)
-
-    # Sanity check: Do we actually have data to process here?
-    if not (x.any() and y.any()):
-        print "specs.preedge_calculate: One of the arrays x or y is empty. Returning zero background."
-        return zeros(x.shape)
-
-    # Next ensure the energy values are *decreasing* in the array,
-    # if not, reverse them.
-    if x[0] < x[-1]:
-        is_reversed = True
-        x = x[::-1]
-        y = y[::-1]
-    else:
-        is_reversed = False
-
-    # Locate the biggest peak.
-    maxidx = abs(y - amax(y)).argmin()
-
-    # Find the gradient of every possible linear fit between the lowest binding energy
-    # and the biggest peak.
-    grads = []
-    for i in range(2, len(x) - maxidx):
-        # Best linear fit to the last i values
-        xs = x[-i:]
-        ys = y[-i:]
-        #p = polyfit(xs,ys,1)
-        #grads.append(p[0])
-        # Try a new algorithm that should be faster than polyfit
-        xs = xs - mean(xs)
-        ys = ys - mean(ys)
-        grads.append((xs * ys).sum() / (xs * xs).sum())
-
-    # Differentiate the gradient array.
-    dgrads = []
-    for i in range(len(grads) - 1):
-        dgrads.append(grads[i + 1] - grads[i])
-    dgrads = array(dgrads)
-
-    # We might not have actually accumulated anything if the maximum is near the
-    # edge (like in a survey scan - the SE background is very big). So, may have
-    # to return a zero background.
-    if not dgrads.any():
-        print "specs.preedge_calculate: No pre-edge gradients. The spectrum must be very large at the low kinetic energy end. Returning zero background."
-        return zeros(x.shape)
-
-    # Find the minimum index of the absolute of the gradient of gradients.
-    mingrad = abs(dgrads).argmin()
-
-    # Make a best linear fit from this number of pre-edge points, generate linear
-    # pre-edge.
-    p = polyfit(x[-mingrad:], y[-mingrad:], 1)
-
-    if is_reversed:
-        return polyval(p, x)[::-1]
-    else:
-        return polyval(p, x)
-
-
-def shirley_calculate(x, y, tol=1e-5, maxit=10):
-    """ S = specs.shirley_calculate(x,y, tol=1e-5, maxit=10)
-
-    Calculate the best auto-Shirley background S for a dataset (x,y). Finds the biggest peak
-    and then uses the minimum value either side of this peak as the terminal points of the
-    Shirley background.
-
-    The tolerance sets the convergence criterion, maxit sets the maximum number
-    of iterations.
-
-    """
-
-    # Make sure we've been passed arrays and not lists.
-    x = array(x)
-    y = array(y)
-
-    # Sanity check: Do we actually have data to process here?
-    if not (x.any() and y.any()):
-        print "specs.shirley_calculate: One of the arrays x or y is empty. Returning zero background."
-        return zeros(x.shape)
-
-    # Next ensure the energy values are *decreasing* in the array,
-    # if not, reverse them.
-    if x[0] < x[-1]:
-        is_reversed = True
-        x = x[::-1]
-        y = y[::-1]
-    else:
-        is_reversed = False
-
-    # Locate the biggest peak.
-    maxidx = abs(y - amax(y)).argmin()
-
-    # It's possible that maxidx will be 0 or -1. If that is the case,
-    # we can't use this algorithm, we return a zero background.
-    if maxidx == 0 or maxidx >= len(y) - 1:
-        print "specs.shirley_calculate: Boundaries too high for algorithm: returning a zero background."
-        return zeros(x.shape)
-
-    # Locate the minima either side of maxidx.
-    lmidx = abs(y[0:maxidx] - amin(y[0:maxidx])).argmin()
-    rmidx = abs(y[maxidx:] - amin(y[maxidx:])).argmin() + maxidx
-    xl = x[lmidx]
-    yl = y[lmidx]
-    xr = x[rmidx]
-    yr = y[rmidx]
-
-    # Max integration index
-    imax = rmidx - 1
-
-    # Initial value of the background shape B. The total background S = yr + B,
-    # and B is equal to (yl - yr) below lmidx and initially zero above.
-    B = zeros(x.shape)
-    B[:lmidx] = yl - yr
-    Bnew = B.copy()
-
-    it = 0
-    while it < maxit:
-        if DEBUG:
-            print "Shirley iteration: ", it
-        # Calculate new k = (yl - yr) / (int_(xl)^(xr) J(x') - yr - B(x') dx')
-        ksum = 0.0
-        for i in range(lmidx, imax):
-            ksum += (x[i] - x[i + 1]) * 0.5 * (y[i] + y[i + 1]
-                                               - 2 * yr - B[i] - B[i + 1])
-        k = (yl - yr) / ksum
-        # Calculate new B
-        for i in range(lmidx, rmidx):
-            ysum = 0.0
-            for j in range(i, imax):
-                ysum += (x[j] - x[j + 1]) * 0.5 * (y[j] +
-                                                   y[j + 1] - 2 * yr - B[j] - B[j + 1])
-            Bnew[i] = k * ysum
-        # If Bnew is close to B, exit.
-        if norm(Bnew - B) < tol:
-            B = Bnew.copy()
-            break
-        else:
-            B = Bnew.copy()
-        it += 1
-
-    if it >= maxit:
-        print "specs.shirley_calculate: Max iterations exceeded before convergence."
-    if is_reversed:
-        return (yr + B)[::-1]
-    else:
-        return yr + B

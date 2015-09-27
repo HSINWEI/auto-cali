@@ -1,7 +1,7 @@
 #!/usr/local/bin/python2.7
 # encoding: utf-8
 '''
- -- shortdesc
+ -- Apply interpolation excitation energy to sample data
 
  is a description
 
@@ -9,9 +9,9 @@ It defines classes_and_methods
 
 @author:     Chen, HsinWei
 
-@copyright:  2015 NSRRC. All rights reserved.
+@copyright:  None
 
-@license:    license
+@license:    None
 
 @contact:    chen.hsinwei@nsrrc.org.tw
 @deffield    updated: Updated
@@ -22,7 +22,6 @@ import os
 
 from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
-from sre_constants import SUCCESS
 
 __all__ = []
 __version__ = 0.1
@@ -57,9 +56,15 @@ def main(argv=None): # IGNORE:C0111
     program_version_message = '%%(prog)s %s (%s)' % (program_version, program_build_date)
     program_shortdesc = __import__('__main__').__doc__.split("\n")[1]
     program_license = '''%s
-
+    
+  Generate calibrated Specs XML file(s).
+  
+  In each sample's "Region Edit",
+  1. Replace "Eexc" with interpolation excitation energy
+  2. Replace "Energy Start" with binding energy
+     binding energy = interpolation excitation energy - original "Energy Start" 
+     
   Created by Chen, HsinWei on %s.
-  Copyright 2015 NSRRC. All rights reserved.
 
   Distributed on an "AS IS" basis without warranties
   or conditions of any kind, either express or implied.
@@ -72,12 +77,16 @@ USAGE
         parser = ArgumentParser(description=program_license, formatter_class=RawDescriptionHelpFormatter)
         parser.add_argument("-v", "--verbose", dest="verbose", action="count", help="set verbosity level [default: %(default)s]")
         parser.add_argument('-V', '--version', action='version', version=program_version_message)
-        parser.add_argument(dest="xmlfiles", help="SpecsLab xml file(s) [default: %(default)s]", metavar="xml", nargs='+')
+        parser.add_argument(dest="xmlfiles", help="SpecsLab xml file(s) [default: %(default)s]", metavar="xml", nargs='*')
         # Process arguments
         args = parser.parse_args()
 
         xmlfiles = args.xmlfiles
         verbose = args.verbose
+        
+        if len(xmlfiles)==0:
+            parser.print_help()
+            return 0
 
         if verbose > 0:
             print("Verbose mode on")
