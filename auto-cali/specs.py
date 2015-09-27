@@ -288,7 +288,7 @@ class SPECSRegion(object):
         for c in self.raw_counts:
             tmp_channels = []
             for i in range(num_detectors):
-                tmp_channels.append(c[i::9])
+                tmp_channels.append(c[i::num_detectors])
             # IMPORTANT: If FixedAnalyzerTransmission or FixedRetardingRatio, we need to use
             # the nearest-neighbour method to align the channeltron energies. I have only
             # implemented the method for FixedAnalyzerTransission at the moment - the FRR
