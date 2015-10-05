@@ -109,3 +109,6 @@ class SPECSRegion_W(SPECSRegion):
 
     def setXmlRegionDataName(self, name):
         self.xmlregion[0].text = name
+
+    def getPeakLocation(self):
+        return float(self.xmlregion.find(".//struct[@name='x']//double[@name='value']").text)
