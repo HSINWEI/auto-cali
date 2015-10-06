@@ -31,6 +31,7 @@ __updated__ = '2015-10-06'
 DEBUG = 0
 TESTRUN = 0
 PROFILE = 0
+PAUSE = 0
 
 class CLIError(Exception):
 	'''Generic exception to raise and log different fatal errors.'''
@@ -77,13 +78,14 @@ USAGE
 		parser.add_argument('-V', '--version', action='version', version=program_version_message)
 		parser.add_argument(dest="xmlfiles", help="SpecsLab xml file(s) [default: %(default)s]", metavar="xml", nargs='*')
 		parser.add_argument('-d', dest="workDir", help="destination directory for output result files [default: %(default)s]", metavar="working directory", default='.')
+		parser.add_argument("-p", "--pause", dest="pause", action="count", help="Pause after calibration accomplished")
 		# Process arguments
 		args = parser.parse_args()
 
 		xmlfiles = args.xmlfiles
 		verbose = args.verbose
 		workDir = os.path.abspath(args.workDir)
-		
+		PAUSE = args.pause
 		if not os.path.exists(workDir):
 			print "-d \"%s\"" % workDir
 			print "        The destination directory \"%s\" does not exist.\n        Create it." % workDir
@@ -118,7 +120,8 @@ USAGE
 		print "\nGenerated {} file(s):".format(len(generated_files))
 		for filename in generated_files:
 			print "	" + filename
-		
+		if PAUSE:
+			raw_input("\nPress ENTER to exit\n")
 		return 0
 	except KeyboardInterrupt:
 		### handle keyboard interrupt ###
@@ -129,6 +132,9 @@ USAGE
 		indent = len(program_name) * " "
 		sys.stderr.write(program_name + ": " + repr(e) + "\n")
 		sys.stderr.write(indent + "  for help use --help")
+		if PAUSE:
+			raw_input("\nPress ENTER to exit\n")
+
 		return 2
 
 if __name__ == "__main__":
