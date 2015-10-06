@@ -4,12 +4,12 @@ from numpy import argmax
 from time import asctime, localtime
 # from scipy.interpolate import interp1d
 import sys
+import csv
 
 DEBUG = False
 # predefine variables
 Au4f_binding_energy = 83.96
 Au4f_name = "Au4f"
-
 def processSingleXml(filename, verbose=None):
     try:
         print "\nProcessing " + filename
@@ -27,10 +27,11 @@ def processSingleXml(filename, verbose=None):
         for region in group.regions:   
             if region.name[:len(Au4f_name)] == Au4f_name:
                 peak_index = argmax(region.counts)
-                peak_energy = region.kinetic_axis[peak_index]
+                peak_max = region.kinetic_axis[peak_index]
+                peak_energy = region.getPeakLocation()
                 region.excitation_energy = peak_energy + Au4f_binding_energy 
                 if verbose:
-                    print "{:24s} {} Epeak {:.2f} => Eexc {:.2f}".format("Found "+region.name, asctime(localtime(region.time)), peak_energy, region.excitation_energy)
+                    print "{:24s} {} Epeak {:.2f} => Eexc {:.2f} ;; Emax-Epeak={:.2f}-{:.2f}={: .2f}".format("Found "+region.name, asctime(localtime(region.time)), peak_energy, region.excitation_energy, peak_max, peak_energy, peak_max-peak_energy)
                 Au4fPeak = {'time':region.time, 'peak':peak_energy, 'eexc':region.excitation_energy}
                 Au4fPeaks.append(Au4fPeak)
    
@@ -40,7 +41,7 @@ def processSingleXml(filename, verbose=None):
             if region.name[:len(Au4f_name)] == Au4f_name:
                 # this is Au4f data region
                 if verbose: 
-                    print "{:24s} {}\tEexc {}".format(region.name, asctime(localtime(region.time)), region.excitation_energy)
+                    print "{:24s} {}\tEexc {:.2f}".format(region.name, asctime(localtime(region.time)), region.excitation_energy)
             else:
                 # this is sample data region
                 # find prior Au4f and posterior Au4f
@@ -52,18 +53,22 @@ def processSingleXml(filename, verbose=None):
                         e2 = Au4fPeaks[i]['eexc']
                         tt = region.time 
                         calibrated_eexc = e1 + (e2 - e1) / (t2 - t1) * (tt - t1)
-                        # region.kinetic_energy is Energy Start
-                        binding_energy_start = calibrated_eexc - region.kinetic_energy
                         if verbose: 
-                            print "{:24s} {}\tEexc {:.2f}\tEstart {:.2f}\tEorg {:.2f}".format(region.name, asctime(localtime(region.time)), calibrated_eexc, binding_energy_start, region.excitation_energy)
+                            print "{:24s} {}\tEexc {:.2f}\tEorg {:.2f}".format(region.name, asctime(localtime(region.time)), calibrated_eexc, region.excitation_energy)
                         
                         # denote energy is patched
-                        region.setXmlRegionDataName(region.name + " calibrated binding energy")
+                        region.setXmlRegionDataName(region.name + " energy calibration")
                         # fill calibrated excitation_energy energy
                         region.setXmlExcitationEnergy('{:.2f}'.format(calibrated_eexc))
-                        # fill kinetic energy filed with binding energy start
-                        region.setXmlKineticEnergy('{:.2f}'.format(binding_energy_start))
+                        # recalculate binding axis  
+                        region.calculate_binding_axis(calibrated_eexc)
                         region.isClibrated = True
+                        
+                        with open(region.name + ".txt", 'w') as f:
+                            writer = csv.writer(f, delimiter='\t')
+                            writer.writerows(zip(region.binding_axis,region.counts))
+                            f.close()
+
                         break
                 if not region.isClibrated and verbose:
                     print "{:24s} Cannot find matched {} pair to calibrate {}".format(region.name, Au4f_name, region.name)
