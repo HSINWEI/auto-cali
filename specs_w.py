@@ -7,7 +7,9 @@
 from specs import SPECS, SPECSGroup, SPECSRegion
 import os
 import xml.etree.cElementTree as ET
+from time import asctime, localtime
 
+Au4f_name = "Au4f"
 VERBOSE = 0
 xmlheader = '''<?xml version="1.0"?>
 <!-- CORBA XML document created by XMLSerializer2 1.6 at 2015-07-21 16:24:09 UTC, from SL 2.78-r28574 built 2012-08-10 09:11:32 UTC -->
@@ -107,7 +109,6 @@ class SPECS_W(SPECS):
         global xmlheader
         if working_dir == None:
             working_dir = os.getcwd()
-        print 'working dir ' + working_dir
         filepath, filename = os.path.split(self.filename) 
         mainname, extname = os.path.splitext(filename)
         newfilename = os.path.join( working_dir, mainname + '-calibrated.xml')    
@@ -167,5 +168,8 @@ class SPECSRegion_W(SPECSRegion):
         self.binding_axis = excitation_energy - self.kinetic_axis
     
     def getPeakLocation(self):
-        return float(self.xmlregion.find(".//struct[@name='x']//double[@name='value']").text)   
+        peak_loc_elem = self.xmlregion.find(".//struct[@name='x']//double[@name='value']")
+        if peak_loc_elem == None:
+            raise ValueError("could not find Peak Location in %r %r" % ( Au4f_name, asctime(localtime(self.time))))
+        return float(peak_loc_elem.text)   
 
