@@ -89,6 +89,8 @@ USAGE
 		if not os.path.exists(workDir):
 			print "-d \"%s\"" % workDir
 			print "        The destination directory \"%s\" does not exist.\n        Create it." % workDir
+			if PAUSE:
+				raw_input("\nPress ENTER to exit\n")
 			return 0
 		
 		if len(xmlfiles) == 0:
