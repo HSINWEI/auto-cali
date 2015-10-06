@@ -118,6 +118,7 @@ class SPECS_W(SPECS):
         with file(newfilename, 'w') as modified: modified.write(xmlheader + data)
         original.close()
         modified.close()
+        os.remove(noheaderilename) 
         return newfilename
 
 class SPECSGroup_W(SPECSGroup):
