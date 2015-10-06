@@ -8,6 +8,7 @@ from specs import SPECS, SPECSGroup, SPECSRegion
 import os
 import xml.etree.cElementTree as ET
 from time import asctime, localtime
+from StringIO import StringIO
 
 Au4f_name = "Au4f"
 VERBOSE = 0
@@ -56,121 +57,118 @@ xmlheader = '''<?xml version="1.0"?>
 '''
 
 class SPECS_W(SPECS):
-    """ Represent a SPECSLab .xml output as a python object. Construct with:
+	""" Represent a SPECSLab .xml output as a python object. Construct with:
 
-        specs_obj = specs.SPECS(my_xml_file)
+		specs_obj = specs.SPECS(my_xml_file)
 
-    """
+	"""
 
-    def __init__(self, filename, verbose=None):
-        """ Constructor, takes the xml file path. """
-        
-        if verbose:
-            global VERBOSE 
-            VERBOSE = 1
+	def __init__(self, filename, verbose=None):
+		""" Constructor, takes the xml file path. """
+		
+		if verbose:
+			global VERBOSE 
+			VERBOSE = 1
 
-        self.filename = filename
+		self.filename = filename
 
-        if VERBOSE: 
-            print self.__class__.__name__ + "::Loading Specs XML " + filename
-        
-        """ Constructor, takes the xml file path. """
-        
-        tree = ET.ElementTree()
-        self.tree = tree
-        
-        try:
-          self.xmlroot = tree.parse(filename)
-        except NameError:
-          print "SPECS init error: could not open this file as an xml tree."
-          return None
-        except ET.ParseError:
-          # We probably need to decode from Windows cp1252 string encoding.
-          f = open(filename, 'r')
-          contents = f.readlines()
-          f.close()
-          contents = "".join(contents).decode("cp1252").encode("utf-8")
-          self.xmlroot = tree.parse(StringIO(contents))
+		if VERBOSE: 
+			print self.__class__.__name__ + "::Loading Specs XML " + filename
+		
+		""" Constructor, takes the xml file path. """
+		
+		tree = ET.ElementTree()
+		self.tree = tree
+		
+		try:
+			self.xmlroot = tree.parse(filename)
+		except NameError:
+			print "SPECS init error: could not open this file as an xml tree."
+			return None
+		except ET.ParseError:
+			# We probably need to decode from Windows cp1252 string encoding.
+			f = open(filename, 'r')
+			contents = f.readlines()
+			f.close()
+			contents = "".join(contents).decode("cp1252").encode("utf-8")
+			self.xmlroot = tree.parse(StringIO(contents))
 
-        # The version impacts on properties of the document so we need to read it
-        # here.
-        self.xmlversion = self.xmlroot.get('version')
+		# The version impacts on properties of the document so we need to read it
+		# here.
+		self.xmlversion = self.xmlroot.get('version')
 
-        # For convenience, store groups as a list and provide a member function
-        # to access by name - same for regions.
-        self.groups = []
-        for group in list(self.xmlroot[0]):
-            # All the subelements will be individual groups (called a RegionGroup in
-            # SPECS parlance) but we must check in case the file format changes.
-            if group.get('type_name') == "RegionGroup":
-                self.groups.append(SPECSGroup_W(group))
-    
-    def writeCalibratedXml(self, working_dir=None):
-        global xmlheader
-        if working_dir == None:
-            working_dir = os.getcwd()
-        filepath, filename = os.path.split(self.filename) 
-        mainname, extname = os.path.splitext(filename)
-        newfilename = os.path.join( working_dir, mainname + '-calibrated.xml')    
-        noheaderilename = os.path.join( working_dir, mainname + '-noheader.xml')
-        self.tree.write( noheaderilename)
-        with file(noheaderilename, 'r') as original: data = original.read()
-        with file(newfilename, 'w') as modified: modified.write(xmlheader + data)
-        original.close()
-        modified.close()
-        os.remove(noheaderilename) 
-        return newfilename
+		# For convenience, store groups as a list and provide a member function
+		# to access by name - same for regions.
+		self.groups = []
+		for group in list(self.xmlroot[0]):
+			# All the subelements will be individual groups (called a RegionGroup in
+			# SPECS parlance) but we must check in case the file format changes.
+			if group.get('type_name') == "RegionGroup":
+				self.groups.append(SPECSGroup_W(group))
+	
+	def writeCalibratedXml(self):
+		global xmlheader
+		filename_path, filename_file = os.path.split(self.filename) 
+		filemain, fileext = os.path.splitext(filename_file)
+		newfilename = filemain + '-calibrated.xml'	
+		noheaderilename = filemain + '-noheader.xml'
+		self.tree.write(noheaderilename)
+		with file(noheaderilename, 'r') as original: data = original.read()
+		with file(newfilename, 'w') as modified: modified.write(xmlheader + data)
+		original.close()
+		modified.close()
+		os.remove(noheaderilename) 
+		return newfilename
 
 class SPECSGroup_W(SPECSGroup):
-    """ Encapsulates a "RegionGroup" struct from the SPECS XML format. """
+	""" Encapsulates a "RegionGroup" struct from the SPECS XML format. """
 
-    def __init__(self, xmlgroup):
+	def __init__(self, xmlgroup):
 
-        self.xmlgroup = xmlgroup
+		self.xmlgroup = xmlgroup
 
-        super(self.__class__, self).__init__(xmlgroup)
-        if VERBOSE: 
-            print self.__class__.__name__ + "::Loading Group " + self.name
-        del self.regions
-        self.regions = []
-        for region in list(xmlgroup[1]):
-            if region.get('type_name') == "RegionData":
-                self.regions.append(SPECSRegion_W(region))
+		super(self.__class__, self).__init__(xmlgroup)
+		if VERBOSE: 
+			print self.__class__.__name__ + "::Loading Group " + self.name
+		del self.regions
+		self.regions = []
+		for region in list(xmlgroup[1]):
+			if region.get('type_name') == "RegionData":
+				self.regions.append(SPECSRegion_W(region))
 
 class SPECSRegion_W(SPECSRegion):
-    """ Encapsulates a "RegionData" struct from the SPECS XML format. """
+	""" Encapsulates a "RegionData" struct from the SPECS XML format. """
 
-    def __init__(self, xmlregion):
+	def __init__(self, xmlregion):
 
-        self.xmlregion = xmlregion
-        self.isClibrated = False
-        super(self.__class__, self).__init__(xmlregion)
-        if VERBOSE: print self.__class__.__name__ + "::Loading Region " + self.name
-        # get time
-        time = xmlregion.find(".//ulong[@name='time']")
-        self.time = int(time.text)
+		self.xmlregion = xmlregion
+		self.isClibrated = False
+		super(self.__class__, self).__init__(xmlregion)
+		if VERBOSE: print self.__class__.__name__ + "::Loading Region " + self.name
+		# get time
+		time = xmlregion.find(".//ulong[@name='time']")
+		self.time = int(time.text)
 
-    def setXmlExcitationEnergy(self, excitation_energy):
-        rdef = self.xmlregion.find(".//struct[@type_name='RegionDef']")
-        for elem in rdef:
-            if elem.attrib['name'] == "excitation_energy":
-                elem.text = excitation_energy
+	def setXmlExcitationEnergy(self, excitation_energy):
+		rdef = self.xmlregion.find(".//struct[@type_name='RegionDef']")
+		for elem in rdef:
+			if elem.attrib['name'] == "excitation_energy":
+				elem.text = excitation_energy
 
-    def setXmlKineticEnergy(self, kinetic_energy):
-        rdef = self.xmlregion.find(".//struct[@type_name='RegionDef']")
-        for elem in rdef:
-            if elem.attrib['name'] == "kinetic_energy":
-                elem.text = kinetic_energy
+	def setXmlKineticEnergy(self, kinetic_energy):
+		rdef = self.xmlregion.find(".//struct[@type_name='RegionDef']")
+		for elem in rdef:
+			if elem.attrib['name'] == "kinetic_energy":
+				elem.text = kinetic_energy
 
-    def setXmlRegionDataName(self, name):
-        self.xmlregion[0].text = name
+	def setXmlRegionDataName(self, name):
+		self.xmlregion[0].text = name
 
-    def calculate_binding_axis(self,excitation_energy):
-        self.binding_axis = excitation_energy - self.kinetic_axis
-    
-    def getPeakLocation(self):
-        peak_loc_elem = self.xmlregion.find(".//struct[@name='x']//double[@name='value']")
-        if peak_loc_elem == None:
-            raise ValueError("could not find Peak Location in %r %r" % ( Au4f_name, asctime(localtime(self.time))))
-        return float(peak_loc_elem.text)   
-
+	def calculate_binding_axis(self, excitation_energy):
+		self.binding_axis = excitation_energy - self.kinetic_axis
+	
+	def getPeakLocation(self):
+		peak_loc_elem = self.xmlregion.find(".//struct[@name='x']//double[@name='value']")
+		if peak_loc_elem == None:
+			raise ValueError("could not find Peak Location in %r %r" % (Au4f_name, asctime(localtime(self.time))))
+		return float(peak_loc_elem.text)   
