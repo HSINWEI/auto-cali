@@ -1,4 +1,3 @@
-import xml.etree.ElementTree as ET
 import specs_w
 from numpy import argmax
 from time import asctime, localtime
@@ -10,17 +9,19 @@ DEBUG = False
 # predefine variables
 Au4f_binding_energy = 83.96
 Au4f_name = "Au4f"
-def processSingleXml(filename, verbose=None):
+def processSingleXml(xmlfilename, verbose=None):
     try:
-        print "\nProcessing " + filename
+        print "\nProcessing " + xmlfilename
         sys.stdout.flush()
-        specs_obj = specs_w.SPECS_W(filename, verbose)
+        specs_obj = specs_w.SPECS_W(xmlfilename, verbose)
     except IOError as e:
         print '        ' + str(e)
         return
 
     if specs_obj == None:
         return
+
+    
     # get Au4f (time, peak energy)
     Au4fPeaks = []
     for group in  specs_obj.groups:
@@ -31,7 +32,7 @@ def processSingleXml(filename, verbose=None):
                 peak_energy = region.getPeakLocation()
                 region.excitation_energy = peak_energy + Au4f_binding_energy 
                 if verbose:
-                    print "{:24s} {} Epeak {:.2f} => Eexc {:.2f} ;; Emax-Epeak={:.2f}-{:.2f}={: .2f}".format("Found "+region.name, asctime(localtime(region.time)), peak_energy, region.excitation_energy, peak_max, peak_energy, peak_max-peak_energy)
+                    print "{:24s} {} Epeak {:.2f} => Eexc {:.2f} ;; Emax-Epeak={:.2f}-{:.2f}={: .2f}".format("Found " + region.name, asctime(localtime(region.time)), peak_energy, region.excitation_energy, peak_max, peak_energy, peak_max - peak_energy)
                 Au4fPeak = {'time':region.time, 'peak':peak_energy, 'eexc':region.excitation_energy}
                 Au4fPeaks.append(Au4fPeak)
    
@@ -66,7 +67,7 @@ def processSingleXml(filename, verbose=None):
                         
                         with open(region.name + ".txt", 'w') as f:
                             writer = csv.writer(f, delimiter='\t')
-                            writer.writerows(zip(region.binding_axis,region.counts))
+                            writer.writerows(zip(region.binding_axis, region.counts))
                             f.close()
 
                         break
