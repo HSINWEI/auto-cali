@@ -79,11 +79,13 @@ USAGE
 		parser.add_argument(dest="xmlfiles", help="SpecsLab xml file(s) [default: %(default)s]", metavar="xml", nargs='*')
 		parser.add_argument('-d', dest="workDir", help="destination directory for output result files [default: %(default)s]", metavar="working directory", default='.')
 		parser.add_argument("-p", "--pause", dest="pause", action="count", help="Pause after calibration accomplished")
+		parser.add_argument("-xy", "--xydata", dest="xydata", action="count", help="Generate xy files after calibration accomplished")
 		# Process arguments
 		args = parser.parse_args()
 
 		xmlfiles = args.xmlfiles
 		verbose = args.verbose
+		xydata = args.xydata
 		workDir = os.path.abspath(args.workDir)
 		PAUSE = args.pause
 		if not os.path.exists(workDir):
@@ -99,6 +101,9 @@ USAGE
 
 		if verbose > 0:
 			print("Verbose mode on")
+		if xydata > 0:
+			print("Enable to generate XY files")
+
 		
 		generated_files = []
 		for xmlfilename in xmlfiles:
@@ -115,7 +120,7 @@ USAGE
 				raise os.error
 
 			os.chdir(destDir)
-			newxmlfilename = processSingleXml(xmlfilename, verbose)
+			newxmlfilename = processSingleXml(xmlfilename, verbose, xydata)
 			if newxmlfilename:
 				generated_files.append(os.path.abspath(newxmlfilename)) 
 
